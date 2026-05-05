@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dar-Connect</title>
+    <script>
+      // Global error handlers to surface runtime issues instead of a white screen
+      window.addEventListener('error', (e) => {
+        document.addEventListener('DOMContentLoaded', ()=>{
+          document.body.style.background = '#fff';
+          document.body.innerHTML = '<pre style="white-space:pre-wrap;color:#900;padding:16px">Runtime Error:\n' + (e.error && e.error.stack ? e.error.stack : e.message) + '</pre>'
+        })
+      })
+      window.addEventListener('unhandledrejection', (ev) => {
+        document.addEventListener('DOMContentLoaded', ()=>{
+          document.body.style.background = '#fff';
+          document.body.innerHTML = '<pre style="white-space:pre-wrap;color:#900;padding:16px">Unhandled Rejection:\n' + (ev.reason && ev.reason.stack ? ev.reason.stack : ev.reason) + '</pre>'
+        })
+      })
+    </script>
+    <script type="module" crossorigin src="/assets/index-PtpWpJ0d.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B5ll4i51.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
