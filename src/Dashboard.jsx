@@ -26,21 +26,41 @@ export default function Dashboard({ user }) {
 
   const loadData = async () => {
     setLoading(true)
-    const { data: props } = await supabase.from("properties").select("*").eq('owner_id', user.id)
-    const { data: vis } = await supabase.from("visits").select("*").eq('owner_id', user.id)
-    if (props) setProperties(props)
-    if (vis) setVisits(vis)
+    let myProps = []
+    let myVis = []
+    try {
+      const { data: props } = await supabase.from("properties").select("*").eq('owner_id', user.id)
+      if (props) myProps = props
+      const { data: vis } = await supabase.from("visits").select("*").eq('owner_id', user.id)
+      if (vis) myVis = vis
+    } catch (e) {
+      console.warn("Supabase fetch failed in Dashboard, using local fallbacks:", e)
+    }
+    const localProps = JSON.parse(localStorage.getItem('local_properties') || '[]').filter(p => p.owner_id === user.id)
+    const localVis = JSON.parse(localStorage.getItem('local_visits') || '[]').filter(v => v.owner_id === user.id)
+    setProperties([...localProps, ...myProps])
+    setVisits([...localVis, ...myVis])
     setLoading(false)
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    navigate('/')
+  const handleLogout = () => {
+    localStorage.removeItem('mock_user')
+    window.location.href = '/'
   }
 
   const deleteProperty = async (id) => {
     if (!window.confirm(t('deleteConfirm'))) return
-    await supabase.from("properties").delete().eq('id', id)
+    try {
+      if (String(id).startsWith('local_')) {
+        const localProps = JSON.parse(localStorage.getItem('local_properties') || '[]')
+        localStorage.setItem('local_properties', JSON.stringify(localProps.filter(x => x.id !== id)))
+      } else {
+        await supabase.from("properties").delete().eq('id', id)
+      }
+    } catch (e) {
+      const localProps = JSON.parse(localStorage.getItem('local_properties') || '[]')
+      localStorage.setItem('local_properties', JSON.stringify(localProps.filter(x => x.id !== id)))
+    }
     setProperties(p => p.filter(x => x.id !== id))
   }
 

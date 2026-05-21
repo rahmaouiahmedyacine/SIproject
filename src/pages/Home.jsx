@@ -8,15 +8,7 @@ import PropertyCard from '../components/property/PropertyCard'
 import Modal from '../components/Modal'
 import StatusBadge from '../components/StatusBadge'
 
-const WILAYAS = [
-  "Adrar","Chlef","Laghouat","Oum El Bouaghi","Batna","Béجاية","Biskra","Béchar",
-  "Blida","Bouira","Tamanrasset","Tébessa","Tlemcen","Tiaret","Tizi Ouzou","Alger",
-  "Djelfa","Jijel","Sétif","Saïda","Skikda","Sidi Bel Abbès","Annaba","Guelma",
-  "Constantine","Médéa","Mostaganem","M'Sila","Mascara","Ouargla","Oran","El Bayadh",
-  "Illizi","Bordj Bou Arréridj","Boumerdès","El Tarf","Tindouf","Tissemsilt",
-  "El Oued","Khenchela","Souk Ahras","Tipaza","Mila","Aïn Defla","Naâما",
-  "Aïn Témouchent","Ghardaïa","Relizane",
-]
+const WILAYAS = Array.from({ length: 48 }, (_, i) => (i + 1).toString())
 
 export default function Home({ user }) {
   const { t, i18n } = useTranslation()
@@ -31,40 +23,70 @@ export default function Home({ user }) {
   const dir = lang === "ar" ? "rtl" : "ltr"
 
   useEffect(() => {
-    if (user) loadData()
+    loadData()
   }, [user, tab])
 
   const loadData = async () => {
     setLoading(true)
-    const { data: props } = await supabase.from("properties").select("*")
-    const { data: vis } = await supabase.from("visits").select("*").eq('buyer_id', user.id)
-    if (props) setProperties(props)
-    if (vis) setVisits(vis)
+    let allProps = []
+    let myVis = []
+    try {
+      const { data: props } = await supabase.from("properties").select("*")
+      if (props) allProps = props
+      if (user) {
+        const { data: vis } = await supabase.from("visits").select("*").eq('buyer_id', user.id)
+        if (vis) myVis = vis
+      }
+    } catch (e) {
+      console.warn("Supabase fetch failed in Home, using local fallbacks:", e)
+    }
+    const localProps = JSON.parse(localStorage.getItem('local_properties') || '[]')
+    const localVis = user ? JSON.parse(localStorage.getItem('local_visits') || '[]').filter(v => v.buyer_id === user.id) : []
+    setProperties([...localProps, ...allProps])
+    setVisits([...localVis, ...myVis])
     setLoading(false)
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    navigate('/')
+  const handleLogout = () => {
+    localStorage.removeItem('mock_user')
+    window.location.href = '/'
+  }
+
+  const normalizeType = (t) => {
+    if (!t) return ""
+    return t.toLowerCase().replace(/_/g, "").replace(/\s+/g, "")
+  }
+
+  const normalizeStatus = (s) => {
+    if (!s) return ""
+    const norm = s.toLowerCase().replace(/[^a-z]/g, "")
+    if (norm === "sale") return "forsale"
+    if (norm === "rent") return "forrent"
+    return norm
   }
 
   const filtered = useMemo(() => properties.filter(p => {
-    if (filters.type !== "all" && p.type !== filters.type) return false
-    if (filters.status !== "all" && p.status !== filters.status) return false
-    if (filters.wilaya !== "all" && !p.location?.includes(filters.wilaya)) return false
-    if (filters.search && !p.title?.toLowerCase().includes(filters.search.toLowerCase())) return false
+    if (filters.type !== "all" && normalizeType(p.type) !== normalizeType(filters.type)) return false
+    if (filters.status !== "all" && normalizeStatus(p.status) !== normalizeStatus(filters.status)) return false
+    if (filters.wilaya !== "all" && p.location !== filters.wilaya) return false
+    if (filters.search) {
+      const s = filters.search.toLowerCase()
+      const titleMatch = p.title?.toLowerCase().includes(s)
+      const wilayaMatch = t(`wilayas.${p.location}`)?.toLowerCase().includes(s)
+      if (!titleMatch && !wilayaMatch) return false
+    }
     return true
-  }), [properties, filters])
+  }), [properties, filters, t])
 
   return (
     <div style={{ minHeight: "100vh", background: "#030712", color: "#e2e8f0", fontFamily: lang === "ar" ? "'Cairo', sans-serif" : "'Inter', sans-serif", direction: dir }}>
       {/* Nav */}
       <nav style={{ background: "#0f172a", borderBottom: "1px solid #1f2937", padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 62, position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg,#0ea5e9,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg,#0ea5e9,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }} onClick={() => navigate('/')}>
             <Ico d={icons.home} size={17} color="#fff" />
           </div>
-          <span style={{ fontWeight: 800, fontSize: 17 }}>{t('appName')}</span>
+          <span style={{ fontWeight: 800, fontSize: 17, cursor: "pointer" }} onClick={() => navigate('/')}>{t('appName')}</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           {[["properties", icons.home, t('properties')], ["myvisits", icons.calendar, t('myVisits')]].map(([tb, ic, lb]) => (
@@ -77,10 +99,24 @@ export default function Home({ user }) {
           <button onClick={() => setLang(lang === "ar" ? "en" : "ar")} className="btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }}>
             <Ico d={icons.globe} size={13} color="#94a3b8" />{t('lang')}
           </button>
-          <span style={{ color: "#64748b", fontSize: 13 }}>{t('hi')}, {user?.email?.split('@')[0]}</span>
-          <button onClick={handleLogout} className="btn-ghost" style={{ padding: "7px 14px", fontSize: 12 }}>
-            <Ico d={icons.logout} size={13} color="#94a3b8" />{t('logout')}
-          </button>
+          
+          {user ? (
+            <>
+              <button onClick={() => navigate('/dashboard')} className="btn-ghost" style={{ padding: "7px 12px", fontSize: 12, color: "#38bdf8", fontWeight: 600 }}>
+                <Ico d={icons.plus} size={13} color="#38bdf8" /> {lang === "ar" ? "لوحة البائع" : "Seller Panel"}
+              </button>
+              <span style={{ color: "#64748b", fontSize: 13 }}>{t('hi')}, {user?.email?.split('@')[0]}</span>
+              <button onClick={handleLogout} className="btn-ghost" style={{ padding: "7px 14px", fontSize: 12 }}>
+                <Ico d={icons.logout} size={13} color="#94a3b8" />{t('logout')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => navigate('/')} className="btn-primary" style={{ padding: "7px 16px", fontSize: 12 }}>
+                {lang === "ar" ? "اختيار دور (بائع/مشتري)" : "Select Role (Buyer/Seller)"}
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -88,7 +124,22 @@ export default function Home({ user }) {
         {tab === "myvisits" && (
           <div className="fade-in">
             <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 20 }}>{t('myVisits')}</h2>
-            {visits.length === 0 ? (
+            {!user ? (
+              <div style={{ textAlign: "center", padding: "60px 20px", background: "#0f172a", border: "1px solid #1f2937", borderRadius: 20, maxWidth: 500, margin: "40px auto 0" }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: "#6366f115", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", border: "1px solid #6366f130" }}>
+                  <Ico d={icons.calendar} size={24} color="#6366f1" />
+                </div>
+                <h3 style={{ color: "#fff", fontSize: 18, fontWeight: 700, marginBottom: 10 }}>
+                  {lang === "ar" ? "سجل دخول لمشاهدة زياراتك" : "Login to view your visits"}
+                </h3>
+                <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+                  {lang === "ar" ? "يتعين عليك تسجيل الدخول لعرض قائمة المواعيد وطلبات الزيارة التي قمت بتقديمها." : "You must log in to view your scheduled appointments and visit requests."}
+                </p>
+                <button onClick={() => navigate('/')} className="btn-primary" style={{ padding: "10px 24px" }}>
+                  {lang === "ar" ? "تسجيل الدخول / اختيار دور" : "Login / Choose Role"}
+                </button>
+              </div>
+            ) : visits.length === 0 ? (
               <div style={{ textAlign: "center", color: "#64748b", padding: 80 }}>{t('noVisits')}</div>
             ) : (
               <div style={{ display: "grid", gap: 14 }}>
@@ -129,7 +180,7 @@ export default function Home({ user }) {
               </select>
               <select className="input-field" style={{ width: "auto", fontFamily: "inherit" }} value={filters.wilaya} onChange={e => setFilters({ ...filters, wilaya: e.target.value })}>
                 <option value="all">{t('allWilayas')}</option>
-                {WILAYAS.map(w => <option key={w} value={w}>{w}</option>)}
+                {WILAYAS.map(w => <option key={w} value={w}>{t(`wilayas.${w}`)}</option>)}
               </select>
             </div>
             {loading ? (

@@ -7,23 +7,27 @@ import Auth from './pages/Auth'
 import Dashboard from './pages/Dashboard'
 
 function App() {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('mock_user')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    // Check current user on mount
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user)
-      setLoading(false)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null)
-    })
-
-    return () => listener.subscription.unsubscribe()
-  }, [])
+  const handleSelectRole = (role) => {
+    const email = role === 'buyer' ? 'buyer@tawat.com' : 'seller@tawat.com'
+    const mockUser = {
+      id: role === 'buyer' ? '11111111-1111-1111-1111-111111111111' : '22222222-2222-2222-2222-222222222222',
+      email,
+      user_metadata: { full_name: role === 'buyer' ? 'Buyer User' : 'Seller User' }
+    }
+    setUser(mockUser)
+    localStorage.setItem('mock_user', JSON.stringify(mockUser))
+  }
 
   // Font loading from snippet
   useEffect(() => {
@@ -40,18 +44,14 @@ function App() {
   return (
     <div className="app-root">
       <Routes>
-        <Route path="/" element={user ? <Navigate to="/home" replace /> : <Welcome />} />
-        <Route path="/auth" element={user ? <Navigate to="/home" replace /> : <Auth />} />
-        <Route path="/signup" element={<Navigate to="/auth" replace />} />
+        <Route path="/" element={<Welcome user={user} onSelectRole={handleSelectRole} />} />
         
         {/* Buyer Routes */}
-        <Route path="/home" element={
-          user ? (isAdmin ? <Navigate to="/dashboard" replace /> : <Home user={user} />) : <Navigate to="/auth" replace />
-        } />
+        <Route path="/home" element={<Home user={user} />} />
         
-        {/* Admin Routes */}
+        {/* Admin/Seller Routes */}
         <Route path="/dashboard/*" element={
-          user ? (isAdmin ? <Dashboard user={user} /> : <Navigate to="/home" replace />) : <Navigate to="/auth" replace />
+          user ? <Dashboard user={user} /> : <Navigate to="/" replace />
         } />
 
         <Route path="*" element={<Navigate to="/" replace />} />

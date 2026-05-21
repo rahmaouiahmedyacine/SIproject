@@ -8,15 +8,7 @@ import PropertyCard from '../components/property/PropertyCard'
 import Modal from '../components/Modal'
 import StatusBadge from '../components/StatusBadge'
 
-const WILAYAS = [
-  "Adrar","Chlef","Laghouat","Oum El Bouaghi","Batna","Béجاية","Biskra","Béchar",
-  "Blida","Bouira","Tamanrasset","Tébessa","Tlemcen","Tiaret","Tizi Ouzou","Alger",
-  "Djelfa","Jijel","Sétif","Saïda","Skikda","Sidi Bel Abbès","Annaba","Guelma",
-  "Constantine","Médéa","Mostaganem","M'Sila","Mascara","Ouargla","Oran","El Bayadh",
-  "Illizi","Bordj Bou Arréridj","Boumerdès","El Tarf","Tindouf","Tissemsilt",
-  "El Oued","Khenchela","Souk Ahras","Tipaza","Mila","Aïn Defla","Naâما",
-  "Aïn Témouchent","Ghardaïa","Relizane",
-]
+const WILAYAS = Array.from({ length: 48 }, (_, i) => (i + 1).toString())
 
 export default function Home({ user }) {
   const { t, i18n } = useTranslation()
@@ -36,10 +28,22 @@ export default function Home({ user }) {
 
   const loadData = async () => {
     setLoading(true)
-    const { data: props } = await supabase.from("properties").select("*")
-    const { data: vis } = await supabase.from("visits").select("*").eq('buyer_id', user.id)
-    if (props) setProperties(props)
-    if (vis) setVisits(vis)
+    let allProps = []
+    let myVis = []
+    try {
+      const { data: props } = await supabase.from("properties").select("*")
+      if (props) allProps = props
+      if (user) {
+        const { data: vis } = await supabase.from("visits").select("*").eq('buyer_id', user.id)
+        if (vis) myVis = vis
+      }
+    } catch (e) {
+      console.warn("Supabase fetch failed in Home, using local fallbacks:", e)
+    }
+    const localProps = JSON.parse(localStorage.getItem('local_properties') || '[]')
+    const localVis = user ? JSON.parse(localStorage.getItem('local_visits') || '[]').filter(v => v.buyer_id === user.id) : []
+    setProperties([...localProps, ...allProps])
+    setVisits([...localVis, ...myVis])
     setLoading(false)
   }
 
@@ -48,13 +52,31 @@ export default function Home({ user }) {
     navigate('/')
   }
 
+  const normalizeType = (t) => {
+    if (!t) return ""
+    return t.toLowerCase().replace(/_/g, "").replace(/\s+/g, "")
+  }
+
+  const normalizeStatus = (s) => {
+    if (!s) return ""
+    const norm = s.toLowerCase().replace(/[^a-z]/g, "")
+    if (norm === "sale") return "forsale"
+    if (norm === "rent") return "forrent"
+    return norm
+  }
+
   const filtered = useMemo(() => properties.filter(p => {
-    if (filters.type !== "all" && p.type !== filters.type) return false
-    if (filters.status !== "all" && p.status !== filters.status) return false
-    if (filters.wilaya !== "all" && !p.location?.includes(filters.wilaya)) return false
-    if (filters.search && !p.title?.toLowerCase().includes(filters.search.toLowerCase())) return false
+    if (filters.type !== "all" && normalizeType(p.type) !== normalizeType(filters.type)) return false
+    if (filters.status !== "all" && normalizeStatus(p.status) !== normalizeStatus(filters.status)) return false
+    if (filters.wilaya !== "all" && p.location !== filters.wilaya) return false
+    if (filters.search) {
+      const s = filters.search.toLowerCase()
+      const titleMatch = p.title?.toLowerCase().includes(s)
+      const wilayaMatch = t(`wilayas.${p.location}`)?.toLowerCase().includes(s)
+      if (!titleMatch && !wilayaMatch) return false
+    }
     return true
-  }), [properties, filters])
+  }), [properties, filters, t])
 
   return (
     <div style={{ minHeight: "100vh", background: "#030712", color: "#e2e8f0", fontFamily: lang === "ar" ? "'Cairo', sans-serif" : "'Inter', sans-serif", direction: dir }}>
@@ -129,7 +151,7 @@ export default function Home({ user }) {
               </select>
               <select className="input-field" style={{ width: "auto", fontFamily: "inherit" }} value={filters.wilaya} onChange={e => setFilters({ ...filters, wilaya: e.target.value })}>
                 <option value="all">{t('allWilayas')}</option>
-                {WILAYAS.map(w => <option key={w} value={w}>{w}</option>)}
+                {WILAYAS.map(w => <option key={w} value={w}>{t(`wilayas.${w}`)}</option>)}
               </select>
             </div>
             {loading ? (

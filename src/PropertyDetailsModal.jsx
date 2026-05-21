@@ -27,7 +27,11 @@ export default function PropertyDetailsModal({ property, user, onClose }) {
     setUploadingId(true)
     // Simulate ID upload for 2 seconds
     setTimeout(async () => {
-      await supabase.from('users').update({ id_verified: true }).eq('id', user.id)
+      try {
+        await supabase.from('users').update({ id_verified: true }).eq('id', user.id)
+      } catch (err) {
+        console.warn("Offline: failed to update users table in Supabase, using local state fallback.")
+      }
       setIsVerified(true)
       setUploadingId(false)
     }, 2000)
@@ -36,12 +40,28 @@ export default function PropertyDetailsModal({ property, user, onClose }) {
   const handleRequestVisit = async () => {
     if (!user) return alert(t('login_required'))
     if (!visitDate) return alert(t('select_date'))
-
-    const { error } = await supabase.from('visits').insert([
-      { property_id: property.id, buyer_id: user.id, visit_date: visitDate, status: 'pending', owner_id: property.owner_id }
-    ])
-
-    if (!error) setRequestStatus('success')
+    const visitData = {
+      id: `local_v_${Date.now()}`,
+      property_id: property.id,
+      buyer_id: user.id,
+      visit_date: visitDate,
+      status: 'pending',
+      owner_id: property.owner_id
+    }
+    try {
+      const { error } = await supabase.from('visits').insert([visitData])
+      if (error) throw error
+    } catch (e) {
+      console.warn("Supabase insert visit failed, saving locally:", e)
+      try {
+        const localVisits = JSON.parse(localStorage.getItem('local_visits') || '[]')
+        localVisits.unshift(visitData)
+        localStorage.setItem('local_visits', JSON.stringify(localVisits))
+      } catch (err) {
+        console.error("Failed to save visit to localStorage:", err)
+      }
+    }
+    setRequestStatus('success')
   }
 
   return (

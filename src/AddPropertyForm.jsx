@@ -20,13 +20,15 @@ export default function AddPropertyForm({ onClose, user }) {
   const handleDocUpload = async (file) => {
     setSavingDoc(true)
     const path = `docs/${Date.now()}_${file.name}`
-    const { data, error } = await supabase.storage.from('documents').upload(path, file)
-    if (error) {
-      console.error("Doc upload error:", error)
-      alert("Error uploading document: " + error.message)
-    } else {
+    try {
+      const { data, error } = await supabase.storage.from('documents').upload(path, file)
+      if (error) throw error
       const url = supabase.storage.from('documents').getPublicUrl(path).data.publicUrl
       setNewProp({ ...newProp, document_url: url })
+    } catch (e) {
+      console.warn("Storage upload failed, falling back to local Blob URL:", e)
+      const localUrl = URL.createObjectURL(file)
+      setNewProp({ ...newProp, document_url: localUrl })
     }
     setSavingDoc(false)
   }
@@ -34,7 +36,8 @@ export default function AddPropertyForm({ onClose, user }) {
   const addProperty = async () => {
     if (!newProp.title || !newProp.price) return
     setSaving(true)
-    const { error } = await supabase.from("properties").insert({
+    const propertyData = {
+      id: `local_${Date.now()}`,
       owner_id: user.id,
       title: newProp.title,
       location: newProp.location,
@@ -48,15 +51,23 @@ export default function AddPropertyForm({ onClose, user }) {
       seller_name: newProp.seller_name,
       seller_phone: newProp.seller_phone,
       seller_email: newProp.seller_email,
-      document_url: newProp.document_url
-    })
-    
-    if (error) {
-      console.error("Insert error:", error);
-      alert("فشلت الإضافة: " + error.message);
-    } else {
-      onClose();
+      document_url: newProp.document_url,
+      created_at: new Date().toISOString()
     }
+    try {
+      const { error } = await supabase.from("properties").insert(propertyData)
+      if (error) throw error
+    } catch (e) {
+      console.warn("Supabase insert failed, saving property locally:", e)
+      try {
+        const localProps = JSON.parse(localStorage.getItem('local_properties') || '[]')
+        localProps.unshift(propertyData)
+        localStorage.setItem('local_properties', JSON.stringify(localProps))
+      } catch (err) {
+        console.error("Failed to save property to localStorage:", err)
+      }
+    }
+    onClose()
     setSaving(false)
   }
 
@@ -149,12 +160,23 @@ function ImageUploader({ value = [], onChange, t }) {
     const newUrls = []
     for (const file of files) {
       const path = `properties/${Date.now()}_${file.name}`
-      const { data, error } = await supabase.storage.from('documents').upload(path, file)
-      if (error) {
-        console.error("Image upload error:", error)
-        alert("Error uploading image: " + error.message)
-      } else {
+      try {
+        const { data, error } = await supabase.storage.from('documents').upload(path, file)
+        if (error) throw error
         newUrls.push(supabase.storage.from('documents').getPublicUrl(path).data.publicUrl)
+      } catch (err) {
+        console.warn("Image upload failed, falling back to Base64:", err)
+        try {
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.readAsDataURL(file)
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = e => reject(e)
+          })
+          newUrls.push(base64)
+        } catch (readErr) {
+          newUrls.push(URL.createObjectURL(file))
+        }
       }
     }
     onChange([...value, ...newUrls])

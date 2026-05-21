@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
 import { useTranslation } from 'react-i18next'
 import { icons, Ico } from '../components/Icons'
@@ -14,6 +14,8 @@ export default function Auth() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectPath = searchParams.get('redirect') || '/home'
   const dir = lang === "ar" ? "rtl" : "ltr"
 
   const handleSubmit = async () => {
@@ -35,7 +37,7 @@ export default function Auth() {
         setLoading(false)
         return
       }
-      navigate('/home')
+      navigate(redirectPath)
     } catch (e) {
       setError("Connection error. Check your Supabase config.")
     }
